@@ -37,6 +37,11 @@ function App() {
     const savedHistory = localStorage.getItem("predictionHistory")
     return savedHistory ? JSON.parse(savedHistory): []
   })
+  const [selectedCurrency, setSelectedCurrency] = useState("INR")
+  const [exchangeRate, setExchangeRate] = useState(null)
+  const [rateDate, setRateDate] = useState("")
+  const [rateLoading, setRateLoading] = useState(true)
+  const [rateError, setRateError] = useState("")
 
   const totalPredictions = predictionHistory.length
   const churnPredictions = predictionHistory.filter((entry) => entry.prediction === "Churn").length
@@ -90,13 +95,22 @@ function App() {
       setError(validationError)
       return
     }
+
+    if (selectedCurrency === "INR" && (!exchangeRate || rateLoading)) {
+      setError(
+        rateLoading ? "Exchange rate is still loading. Please try again later." : rateError || "Exchange rate unavailable, please try again later."
+      )
+      return
+    }
+
+    const conversionRate = selectedCurrency === "INR" ? exchangeRate: 1
     
     const payload = {
       ...formData,
       tenure: Number(formData.tenure), 
-      MonthlyCharges: Number(formData.MonthlyCharges),
+      MonthlyCharges: Number(Number(formData.MonthlyCharges) * conversionRate).toFixed(2),
       SeniorCitizen: Number(formData.SeniorCitizen),
-      TotalCharges: Number(formData.TotalCharges)
+      TotalCharges: Number(Number(formData.TotalCharges) * conversionRate).toFixed(2)
     }
 
     setLoading(true)
@@ -148,7 +162,8 @@ function App() {
         contract: formData.Contract,
         prediction: data.prediction_label,
         churnProbability: data.churn_probability,
-        timestamp: new Date().toLocaleString()
+        timestamp: new Date().toLocaleString(),
+        currency: selectedCurrency
       }
 
       setPredictionHistory((previousHistory) => [historyEntry, ...previousHistory])
@@ -208,6 +223,36 @@ function App() {
   useEffect(() => {
     localStorage.setItem("predictionHistory", JSON.stringify(predictionHistory))
   },[predictionHistory])
+
+  useEffect(() => {
+    const fetchExchangeRate = async () => {
+      try {
+        setRateLoading(true)
+        setRateError("")
+
+        const response = await fetch("https://api.frankfurter.dev/v2/rate/INR/USD")
+
+        if (!response.ok) {
+          throw new Error("Unable to fetch exchange rate.")
+        }
+        const data = await response.json()
+        console.log(data)
+
+        if (!Number.isFinite(data.rate) || data.rate <= 0) {
+          throw new Error("Invalid exchange rate received.")
+        }
+        setExchangeRate(data.rate)
+        setRateDate(data.date)
+      } catch (error) {
+        setRateError(error.message)
+      }
+      finally {
+        setRateLoading(false)
+      }
+    }
+
+    fetchExchangeRate()
+  },[])
 
 return (
   <div className="app-layout">
@@ -579,6 +624,31 @@ return (
 
                 <div className="form-grid">
 
+                  {/* Currency selector */}
+                  <div className="form-group">
+                    <label htmlFor="currency">Currency</label>
+                    <select name="currency" id="currency" value={selectedCurrency} onChange={(e) => setSelectedCurrency(e.target.value)}>
+                      <option value="INR">INR (Indian Rupee)</option>
+                      <option value="USD">USD (US Dollar)</option>
+                    </select>
+                  </div>
+                  {
+                    selectedCurrency === "INR" && (
+                      <div className="exchange_rate_info">
+                        {rateLoading ? (
+                          <p>Fetching exchange rate...</p>
+                        ) : rateError ? (
+                          <p>{rateError}</p>
+                        ) : (
+                          <p>1 INR = {exchangeRate.toFixed(6)}USD
+                            <br />
+                            <small>Rate Date: {rateDate}</small>
+                          </p>
+                        )}
+                      </div>
+                    )
+                  }
+
                   {/* Monthly Charges */}
                   <div className="form-group">
                     <label htmlFor="monthlyCharges">
@@ -784,7 +854,7 @@ return (
                         <tr key={entry.id}>
                           <td>{entry.timestamp}</td>
                           <td>{entry.tenure} months</td>
-                          <td>Rs{Number(entry.monthlyCharges).toFixed(2)}.</td>
+                          <td>{Number(entry.monthlyCharges).toFixed(2)}.</td>
                           <td>{entry.contract}</td>
 
                           <td>

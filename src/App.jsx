@@ -784,7 +784,7 @@ return (
                         <tr key={entry.id}>
                           <td>{entry.timestamp}</td>
                           <td>{entry.tenure} months</td>
-                          <td>Rs{Number(entry.monthlyCharges).toFixed(2)}.</td>
+                          <td>$ {Number(entry.monthlyCharges).toFixed(2)}.</td>
                           <td>{entry.contract}</td>
 
                           <td>
